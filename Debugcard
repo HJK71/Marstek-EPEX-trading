@@ -1,0 +1,11 @@
+type: entities
+entities:
+  - entity: binary_sensor.full_charge_trigger
+  - entity: binary_sensor.full_discharge_trigger
+  - entity: binary_sensor.epex_profitable_daytime
+  - entity: binary_sensor.cheapest_hours_daytime
+  - entity: binary_sensor.most_expensive_hours_daytime
+  - entity: binary_sensor.battery_charge_action_allowed
+  - entity: binary_sensor.battery_discharge_action_allowed
+  - entity: binary_sensor.charging_cheapest_hours_active
+  - entity: binary_sensor.discharging_expensive_hours_active
