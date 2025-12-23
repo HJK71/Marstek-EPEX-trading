@@ -18,7 +18,7 @@ homeassistant:
   packages: !include_dir_named packages
 ******************************************************************************  
 Add a manual card to you're dashboard and paste the lovelace code in it.
-Make another manual card and paste the debug code in it.
+Make another manual card and paste the debug code in it. (only for test purposes)
 ******************************************************************************
 User manual:
 
