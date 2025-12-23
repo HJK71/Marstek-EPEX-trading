@@ -19,7 +19,7 @@ cards:
         name: Dagopbrengsten
       - entity: input_number.battery_arbitrage_day_result
       - entity: input_number.battery_arbitrage_total
-        name: Jaaropbrengsten
+        name: Totaalopbrengsten
     card_mod:
       style: |
         ha-card {
