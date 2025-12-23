@@ -1,0 +1,518 @@
+# =========================================================
+# Package: Daytime Battery Arbitrage – Sensors & Automations
+# =========================================================
+
+# -------------------------------
+# Helpers: Booleans and Numbers
+# -------------------------------
+input_boolean:
+  epex_trading_active:
+    name: EPEX Trading Active
+  daytime_charging_active:
+    name: Daytime Charging Active
+  daytime_discharging_active:
+    name: Daytime Discharging Active
+
+input_number:
+  battery_efficiency_loss:
+    name: Battery Efficiency Loss (%)
+    min: 0
+    max: 50
+    step: 1
+    unit_of_measurement: "%"
+    mode: box
+    initial: 18
+
+  battery_depreciation:
+    name: Battery Depreciation (€/kWh)
+    min: 0
+    max: 0.15
+    step: 0.005
+    unit_of_measurement: "€/kWh"
+    mode: box
+    initial: 0.05
+
+  battery_charge_power:
+    name: Charge Power (W)
+    min: 100
+    max: 5000
+    step: 50
+    unit_of_measurement: "W"
+    mode: box
+    initial: 2000
+
+  battery_discharge_power:
+    name: Discharge Power (W)
+    min: 100
+    max: 5000
+    step: 50
+    unit_of_measurement: "W"
+    mode: box
+    initial: 2300
+
+  full_charge_price:
+    name: Full Charge Price (€/kWh)
+    min: 0
+    max: 1
+    step: 0.001
+    unit_of_measurement: "€/kWh"
+    mode: box
+    initial: 0.15
+
+  full_discharge_price:
+    name: Full Discharge Price (€/kWh)
+    min: 0
+    max: 1
+    step: 0.001
+    unit_of_measurement: "€/kWh"
+    mode: box
+    initial: 0.40
+
+  battery_arbitrage_day_result:
+    name: Battery Arbitrage Dagresultaat (22–22)
+    min: -1000
+    max: 1000
+    step: 0.01
+    unit_of_measurement: "€"
+    mode: box
+    initial: 0.0
+
+  battery_arbitrage_total:
+    name: Battery Arbitrage Totaal
+    min: -10000
+    max: 10000
+    step: 0.01
+    unit_of_measurement: "€"
+    mode: box
+    initial: 212.45
+ 
+
+
+
+# =========================================================
+# Template Sensors – Daytime Battery Arbitrage (alleen batterij 1)
+# =========================================================
+template:
+
+  - binary_sensor:
+      - name: epex_profitable_daytime
+        unique_id: bs_epex_profitable_daytime
+        state: >
+          {% set diff = states('sensor.price_difference_most_vs_cheapest_daytime') | float(0) %}
+          {% set cheap_avg = states('sensor.average_price_cheapest_hours_daytime') | float(0) %}
+          {{ 'on' if diff > (cheap_avg * (states('input_number.battery_efficiency_loss') | float / 100)
+             + states('input_number.battery_depreciation') | float) else 'off' }}
+
+      - name: full_charge_trigger
+        unique_id: bs_full_charge_trigger
+        state: >
+          {% set full_price = states('input_number.full_charge_price') | float(0) %}
+          {% set daily_low = states('sensor.average_price_cheapest_hours_daytime') | float(0) %}
+          {{ 'on' if full_price >= daily_low else 'off' }}
+
+      - name: full_discharge_trigger
+        unique_id: bs_full_discharge_trigger
+        state: >
+          {% set full_price = states('input_number.full_discharge_price') | float(0) %}
+          {% set daily_high = states('sensor.average_price_most_expensive_hours_daytime') | float(0) %}
+          {{ 'on' if full_price <= daily_high else 'off' }}
+
+      - name: battery_charge_action_allowed
+        unique_id: bs_battery_charge_action_allowed
+        icon: >
+          {% if is_state('binary_sensor.battery_charge_action_allowed', 'on') %}
+            mdi:battery-play
+          {% else %}
+            mdi:battery-lock
+          {% endif %}
+        state: >
+          {{
+            is_state('input_boolean.epex_trading_active', 'on') and
+            (
+              is_state('binary_sensor.full_charge_trigger', 'on')
+              or is_state('binary_sensor.epex_profitable_daytime', 'on')
+            )
+          }}
+        attributes:
+          full_charge_trigger: "{{ states('binary_sensor.full_charge_trigger') }}"
+          epex_profitable_daytime: "{{ states('binary_sensor.epex_profitable_daytime') }}"
+
+      - name: battery_discharge_action_allowed
+        unique_id: bs_battery_discharge_action_allowed
+        icon: >
+          {% if is_state('binary_sensor.battery_discharge_action_allowed', 'on') %}
+            mdi:battery-alert
+          {% else %}
+            mdi:battery-lock
+          {% endif %}
+        state: >
+          {{
+            is_state('input_boolean.epex_trading_active', 'on') and
+            (
+              is_state('binary_sensor.full_discharge_trigger', 'on')
+              or is_state('binary_sensor.epex_profitable_daytime', 'on')
+            )
+          }}
+        attributes:
+          full_discharge_trigger: "{{ states('binary_sensor.full_discharge_trigger') }}"
+          epex_profitable_daytime: "{{ states('binary_sensor.epex_profitable_daytime') }}"
+
+      - name: charging_cheapest_hours_active
+        unique_id: bs_charging_cheapest_hours_active
+        icon: mdi:battery-charging
+        state: >
+          {{
+            is_state('input_boolean.epex_trading_active', 'on')
+            and is_state('binary_sensor.battery_charge_action_allowed', 'on')
+            and is_state('binary_sensor.cheapest_hours_daytime', 'on')
+          }}
+
+      - name: discharging_expensive_hours_active
+        unique_id: bs_discharging_expensive_hours_active
+        icon: mdi:battery-arrow-up
+        state: >
+          {{
+            is_state('input_boolean.epex_trading_active', 'on')
+            and is_state('binary_sensor.battery_discharge_action_allowed', 'on')
+            and is_state('binary_sensor.most_expensive_hours_daytime', 'on')
+          }}
+
+      - name: cheapest_hours_daytime
+        unique_id: bs_cheapest_hours_daytime
+        state: >
+          {% from 'cheapest_energy_hours.jinja' import cheapest_energy_hours %}
+          {{ cheapest_energy_hours(
+              'sensor.zonneplan_current_electricity_tariff',
+              lowest=true, hours=3, start='22:00', end='21:59', mode='is_now'
+          ) | bool }}
+        # ⚠️ Pas sensor aan naar jouw provider, bijv. 'sensor.jouw_provider_current_tariff'
+
+      - name: most_expensive_hours_daytime
+        unique_id: bs_most_expensive_hours_daytime
+        state: >
+          {% from 'cheapest_energy_hours.jinja' import cheapest_energy_hours %}
+          {{ cheapest_energy_hours(
+              'sensor.zonneplan_current_electricity_tariff',
+              lowest=false, hours=2, start='22:00', end='21:59', mode='is_now'
+          ) | bool }}
+        # ⚠️ Pas sensor aan naar jouw provider, bijv. 'sensor.jouw_provider_current_tariff'
+
+  - sensor:
+      - name: average_price_cheapest_hours_daytime
+        unique_id: s_avg_price_cheapest_daytime
+        unit_of_measurement: "€/kWh"
+        state: >
+          {% from 'cheapest_energy_hours.jinja' import cheapest_energy_hours %}
+          {{ (cheapest_energy_hours(
+              'sensor.zonneplan_current_electricity_tariff',
+              lowest=true, hours=3, start='22:00', end='21:59', mode='average'
+          ) | float(0) / 10000000) | round(3) }}
+        # ⚠️ Pas sensor aan naar jouw provider, bijv. 'sensor.jouw_provider_current_tariff'
+
+      - name: average_price_most_expensive_hours_daytime
+        unique_id: s_avg_price_expensive_daytime
+        unit_of_measurement: "€/kWh"
+        state: >
+          {% from 'cheapest_energy_hours.jinja' import cheapest_energy_hours %}
+          {{ (cheapest_energy_hours(
+              'sensor.zonneplan_current_electricity_tariff',
+              lowest=false, hours=2, start='22:00', end='21:59', mode='average'
+          ) | float(0) / 10000000) | round(3) }}
+        # ⚠️ Pas sensor aan naar jouw provider, bijv. 'sensor.jouw_provider_current_tariff'
+
+      - name: price_difference_most_vs_cheapest_daytime
+        unique_id: s_price_diff_daytime
+        unit_of_measurement: "€/kWh"
+        state: >
+          {{ (states('sensor.average_price_most_expensive_hours_daytime') | float(0)
+             - states('sensor.average_price_cheapest_hours_daytime') | float(0)) | round(3) }}
+
+      - name: start_time_charging_daytime
+        unique_id: s_start_charging_daytime
+        state: >
+          {% from 'cheapest_energy_hours.jinja' import cheapest_energy_hours %}
+          {% set t = cheapest_energy_hours(
+              'sensor.zonneplan_current_electricity_tariff',
+              lowest=true, hours=3, start='22:00', end='21:59', mode='start'
+          ) %}
+          {{ as_datetime(t).strftime('%H:%M')
+             if t not in ('unknown','unavailable', none) else '00:00' }}
+        # ⚠️ Pas sensor aan naar jouw provider, bijv. 'sensor.jouw_provider_current_tariff'
+
+      - name: start_time_discharging_daytime
+        unique_id: s_start_discharging_daytime
+        state: >
+          {% from 'cheapest_energy_hours.jinja' import cheapest_energy_hours %}
+          {% set t = cheapest_energy_hours(
+              'sensor.zonneplan_current_electricity_tariff',
+              lowest=false, hours=2, start='22:00', end='21:59', mode='start'
+          ) %}
+          {{ as_datetime(t).strftime('%H:%M')
+             if t not in ('unknown','unavailable', none) else '00:00' }}
+        # ⚠️ Pas sensor aan naar jouw provider, bijv. 'sensor.jouw_provider_current_tariff'
+
+      - name: totaal_ac_vermogen_thuisbatterijen
+        unique_id: totaal_ac_vermogen_thuisbatterijen
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >
+          {{ states('sensor.lilygo_rs485_marstek_ac_power') | float(0) }}
+        # ⚠️ Pas sensor aan naar jouw batterij, bijv. 'sensor.marstek_ac_power'
+
+      - name: average_battery_soc
+        unique_id: average_avg_battery_soc
+        unit_of_measurement: "%"
+        device_class: battery
+        state_class: measurement
+        state: >
+          {{ states('sensor.lilygo_rs485_marstek_battery_state_of_charge') | float(0) }}
+        # ⚠️ Pas sensor aan naar jouw batterij, bijv. 'sensor.marstek_battery_state_of_charge'
+
+      - name: battery_efficiency_actual
+        unique_id: s_battery_efficiency_actual
+        unit_of_measurement: "%"
+        icon: mdi:battery-alert
+        state: >
+          {% set total_charging = states('sensor.lilygo_rs485_marstek_monthly_charging_energy') | float(0) %}
+          {% set total_discharging = states('sensor.lilygo_rs485_marstek_monthly_discharging_energy') | float(0) %}
+          {% if total_charging > 0 %}
+            {{ ((total_discharging / total_charging) * 100) | round(1) }}
+          {% else %}
+            0
+          {% endif %}
+        # ⚠️ Pas sensor(en) aan naar jouw batterij, bijv. 'sensor.marstek_monthly_charging_energy'
+
+      - name: battery_arbitrage_income
+        unique_id: s_battery_arbitrage_income
+        unit_of_measurement: "€"
+        device_class: monetary
+        state_class: measurement
+        state: >
+          {% set charging = states('sensor.lilygo_rs485_marstek_daily_charging_energy') | float(0) %}
+          {% set discharging = states('sensor.lilygo_rs485_marstek_daily_discharging_energy') | float(0) %}
+          {% set prijs_hoog = states('sensor.average_price_most_expensive_hours_daytime') | float(0) %}
+          {% set prijs_laag = states('sensor.average_price_cheapest_hours_daytime') | float(0) %}
+          {{ ((discharging * prijs_hoog) - (charging * prijs_laag)) | round(2) }}
+        # ⚠️ Pas sensor(en) aan naar jouw batterij, bijv. 'sensor.marstek_daily_charging_energy'
+
+
+
+
+# =========================================================
+# Automations – Daytime Battery Charging & Discharging (alleen batterij 1)
+# =========================================================
+
+automation:
+# -------------------------------
+# Daytime Battery Charging (Cheapest Hours)
+# -------------------------------
+- alias: Daytime Battery Charging (Cheapest Hours)
+  id: battery_charging_automation
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.charging_cheapest_hours_active
+      to: "on"
+  action:
+    # Enable batterij 1
+    - device_id: 86781cfb31ca692028e38414353cc0f7
+      domain: select
+      entity_id: select.lilygo_rs485_marstek_rs485_control_mode
+      type: select_option
+      option: enable
+    # ⚠️ Pas device_id en entity_id aan naar jouw batterij, bijv. 'device_id: abc123', 'entity_id: select.marstek_rs485_control_mode'
+
+    - delay: "00:00:03"
+
+    # Set fixed charge power voor batterij 1
+    - device_id: 86781cfb31ca692028e38414353cc0f7
+      domain: number
+      entity_id: number.lilygo_rs485_marstek_forcible_charge_power
+      type: set_value
+      value: 2000
+    # ⚠️ Pas device_id en entity_id aan naar jouw batterij, bijv. 'device_id: abc123', 'entity_id: number.marstek_forcible_charge_power'
+
+    # Start charging
+    - device_id: 86781cfb31ca692028e38414353cc0f7
+      domain: select
+      entity_id: select.lilygo_rs485_marstek_forcible_charge_discharge
+      type: select_option
+      option: charge
+    # ⚠️ Pas device_id en entity_id aan naar jouw batterij, bijv. 'device_id: abc123', 'entity_id: select.marstek_forcible_charge_discharge'
+
+    # Mark daytime charging as active
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.daytime_charging_active
+
+    # Notification
+    - service: notify.mobile_app_iphone_van_?????  #⚠️ Pas telefoon naam aan
+      data:
+        title: "🔋 Batterij laden gestart"
+        message: >
+          Cheap price: {{ states('sensor.average_price_cheapest_hours_daytime') }} €/kWh
+          Prijsverschil: {{ states('sensor.price_difference_most_vs_cheapest_daytime') }} €/kWh
+
+# -------------------------------
+# Daytime Battery Discharging (Expensive Hours)
+# -------------------------------
+- alias: Daytime Battery Discharging (Expensive Hours)
+  id: battery_discharging_automation
+  mode: single
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.discharging_expensive_hours_active
+      to: "on"
+  action:
+    # Enable batterij 1
+    - device_id: 86781cfb31ca692028e38414353cc0f7
+      domain: select
+      entity_id: select.lilygo_rs485_marstek_rs485_control_mode
+      type: select_option
+      option: enable
+    # ⚠️ Pas device_id en entity_id aan naar jouw batterij, bijv. 'device_id: abc123', 'entity_id: select.marstek_rs485_control_mode'
+
+    - delay: "00:00:03"
+
+    # Set fixed discharge power voor batterij 1
+    - device_id: 86781cfb31ca692028e38414353cc0f7
+      domain: number
+      entity_id: number.lilygo_rs485_marstek_forcible_discharge_power
+      type: set_value
+      value: 2300
+    # ⚠️ Pas device_id en entity_id aan naar jouw batterij, bijv. 'device_id: abc123', 'entity_id: number.marstek_forcible_discharge_power'
+
+    # Start discharging
+    - device_id: 86781cfb31ca692028e38414353cc0f7
+      domain: select
+      entity_id: select.lilygo_rs485_marstek_forcible_charge_discharge
+      type: select_option
+      option: discharge
+    # ⚠️ Pas device_id en entity_id aan naar jouw batterij, bijv. 'device_id: abc123', 'entity_id: select.marstek_forcible_charge_discharge'
+
+    # Mark daytime discharging as active
+    - service: input_boolean.turn_on
+      target:
+        entity_id: input_boolean.daytime_discharging_active
+
+    # Notification
+    - service: notify.mobile_app_iphone_van_???? #⚠️ Pas telefoon naam aan
+      data:
+        title: "⚡ Batterij ontladen gestart"
+        message: >
+          Expensive price: {{ states('sensor.average_price_most_expensive_hours_daytime') }} €/kWh
+          Prijsverschil: {{ states('sensor.price_difference_most_vs_cheapest_daytime') }} €/kWh
+
+# -------------------------------
+# Stop Battery Action on Price Window End
+# -------------------------------
+- alias: Stop Battery Action on Price Window End
+  description: Stop battery charging/discharging when active window ends
+  trigger:
+    - platform: state
+      entity_id:
+        - binary_sensor.charging_cheapest_hours_active
+        - binary_sensor.discharging_expensive_hours_active
+      to: "off"
+  action:
+    # Stop batterij 1
+    - device_id: 86781cfb31ca692028e38414353cc0f7
+      domain: select
+      entity_id: select.lilygo_rs485_marstek_forcible_charge_discharge
+      type: select_option
+      option: stop
+    # ⚠️ Pas device_id en entity_id aan naar jouw batterij, bijv. 'device_id: abc123', 'entity_id: select.marstek_forcible_charge_discharge'
+
+    # Stop de lopende automations
+    - service: automation.turn_off
+      target:
+        entity_id:
+          - automation.daytime_battery_charging_cheapest_hours
+          - automation.daytime_battery_discharging_expensive_hours
+
+    # Wacht kort en schakel automations weer in
+    - delay: "00:00:05"
+    - service: automation.turn_on
+      target:
+        entity_id:
+          - automation.daytime_battery_charging_cheapest_hours
+          - automation.daytime_battery_discharging_expensive_hours
+
+    # Notificatie
+    - service: notify.mobile_app_iphone_van_???? #⚠️ Pas telefoon naam aan
+      data:
+        title: "🛑 Batterij gestopt"
+        message: >
+          Laden of ontladen gestopt omdat de prijsvensters zijn afgelopen.
+          charging_cheapest_hours_active: {{ states('binary_sensor.charging_cheapest_hours_active') }}
+          discharging_expensive_hours_active: {{ states('binary_sensor.discharging_expensive_hours_active') }}
+
+# -------------------------------
+# Calculate Battery Session Income
+# -------------------------------
+- alias: Calculate Battery Session Income
+  trigger:
+    - platform: state
+      entity_id:
+        - binary_sensor.cheapest_hours_daytime
+        - binary_sensor.most_expensive_hours_daytime
+        - binary_sensor.full_charge_trigger
+        - binary_sensor.full_discharge_trigger
+  action:
+    - variables:
+        efficiency_loss: "{{ states('input_number.battery_efficiency_loss') | float(20) / 100 }}"
+        discharging: >
+          {{ (states('sensor.lilygo_rs485_marstek_daily_discharging_energy') | float(0))
+              * (1 - efficiency_loss) }}
+        # ⚠️ Pas device_id/entity_id aan naar jouw batterij, bijv. 'sensor.marstek_daily_discharging_energy'
+        charging: >
+          {{ (states('sensor.lilygo_rs485_marstek_daily_charging_energy') | float(0)) * (1 - efficiency_loss) }}
+        # ⚠️ Pas device_id/entity_id aan naar jouw batterij, bijv. 'sensor.marstek_daily_charging_energy'
+        full_charge_price: "{{ states('input_number.full_charge_price') | float(0.15) }}"
+        full_discharge_price: "{{ states('input_number.full_discharge_price') | float(0.4) }}"
+        session_income: "{{ (discharging * full_discharge_price) - (charging * full_charge_price) | round(2) }}"
+
+# -------------------------------
+# Book Battery Arbitrage Day at 22:00
+# -------------------------------
+- alias: Book Battery Arbitrage Day at 22:00
+  id: book_battery_arbitrage_day_22
+  trigger:
+    - platform: time
+      at: "22:00:00"
+  condition:
+    - condition: template
+      value_template: >
+        {{ states('input_number.battery_arbitrage_day_result') | float(0)
+           != states('sensor.battery_arbitrage_income') | float(0) }}
+  action:
+    - service: input_number.set_value
+      target:
+        entity_id: input_number.battery_arbitrage_day_result
+      data:
+        value: >
+          {{ states('sensor.battery_arbitrage_income') | float(0) }}
+    - service: input_number.set_value
+      target:
+        entity_id: input_number.battery_arbitrage_total
+      data:
+        value: >
+          {{ states('input_number.battery_arbitrage_total') | float(0)
+             + states('sensor.battery_arbitrage_income') | float(0) }}
+
+# -------------------------------
+# Reset Battery Arbitrage Day Result
+# -------------------------------
+- alias: Reset Battery Arbitrage Day Result
+  id: reset_battery_arbitrage_day_result
+  trigger:
+    - platform: time
+      at: "22:00:05"
+  action:
+    - service: input_number.set_value
+      target:
+        entity_id: input_number.battery_arbitrage_day_result
+      data:
+        value: 0
+
