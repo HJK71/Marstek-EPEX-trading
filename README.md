@@ -12,6 +12,7 @@ Installation via HACS:
 Create package file
 Make a new file under packages, i.e "Marstek_epex.Yaml"
 Paste the packagefile code into it.
+Check the remarks in the code. You have to adapt them to you're personal settings!
 ******************************************************************************  
 Add a manual card to you're dashboard and paste the lovelace code in it.
 Make another manual card and paste the debug code in it. (only for test purposes)
