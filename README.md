@@ -38,6 +38,6 @@ Settings:
 
 7. Daily returns: discharge price x discharge consumption – charge price x charge consumption. This is the daily return, taking losses into account, but excluding depreciation costs.
 
-8. Annual returns: same as above, but for the entire calendar year.
+8. Total returns: same as above, but for the entire battery life.
 
 
