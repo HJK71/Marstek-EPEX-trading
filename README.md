@@ -12,10 +12,8 @@ Installation via HACS:
 Create package file
 Make a new file under packages, i.e "Marstek_epex.Yaml"
 Paste the packagefile code into it.
-Make sure you have something like this in you're configuration.yaml: 
-#packages#
-homeassistant:
-  packages: !include_dir_named packages
+Read the marks because depending on energieprovicer and Marstek HA inplemenation you have to adapt some settings. Also you're mobilphone for notification must be set.
+Default is Zonneplan and Lilygo. 
 ******************************************************************************  
 Add a manual card to you're dashboard and paste the lovelace code in it.
 Make another manual card and paste the debug code in it. (only for test purposes)
@@ -38,6 +36,6 @@ Settings:
 
 7. Daily returns: discharge price x discharge consumption – charge price x charge consumption. This is the daily return, taking losses into account, but excluding depreciation costs.
 
-8. Annual returns: same as above, but for the entire calendar year.
+8. Total returns: same as above, but for the entire battery life.
 
 
