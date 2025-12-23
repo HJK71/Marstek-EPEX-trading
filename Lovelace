@@ -1,0 +1,169 @@
+type: vertical-stack
+cards:
+  - type: entities
+    title: Prijs instellingen
+    entities:
+      - entity: input_boolean.epex_trading_active
+        name: EPEX Trading Actief
+      - entity: input_number.battery_efficiency_loss
+        name: Omzetverliezen
+      - entity: sensor.battery_efficiency_actual
+        name: Omzetverlies deze maand
+      - entity: input_number.battery_depreciation
+        name: Afschrijving (€/kWh)
+      - entity: input_number.full_charge_price
+        name: Max.laadprijs (€/kWh)
+      - entity: input_number.full_discharge_price
+        name: Min.ontlaadprijs (€/kWh)
+      - entity: sensor.battery_arbitrage_income
+        name: Dagopbrengsten
+      - entity: input_number.battery_arbitrage_day_result
+      - entity: input_number.battery_arbitrage_total
+        name: Jaaropbrengsten
+    card_mod:
+      style: |
+        ha-card {
+          border: 3px solid #00ff00;
+          border-radius: 20px;
+          padding: 16px;
+          box-shadow: none;
+        }
+        .entities-row {
+          border-radius: 8px;
+          background-color: rgba(0,255,0,0.15);
+          margin-bottom: 4px;
+          padding: 4px;
+        }
+  - type: markdown
+    content: |
+      {% if is_state('input_boolean.epex_trading_active','on')
+            and (
+              is_state('binary_sensor.epex_profitable_daytime','on') 
+              or is_state('binary_sensor.full_charge_trigger','on') 
+              or is_state('binary_sensor.full_discharge_trigger','on')
+            )
+      %}
+        <div style="display:flex; gap:12px; margin-bottom: 12px;">
+          <div style="flex:1; background-color: rgba(0,255,0,0.25); border-radius: 8px; padding: 12px;">
+            🔋 <strong>Laden:</strong>
+            {{ states('sensor.start_time_charging_daytime') | default('–') }}
+            (3 h, {{ states('input_number.battery_charge_power') }} W)
+          </div>
+          <div style="flex:1; background-color: rgba(255,0,0,0.25); border-radius: 8px; padding: 12px;">
+            🪫 <strong>Ontladen:</strong>
+            {{ states('sensor.start_time_discharging_daytime') | default('–') }}
+            (2 h, {{ states('input_number.battery_discharge_power') }} W)
+          </div>
+        </div>
+
+        <div style="background-color: rgba(0,255,0,0.15); border-radius: 8px; padding: 12px; margin-bottom: 12px;">
+          🔺 Prijsverschil:
+          {{ states('sensor.price_difference_most_vs_cheapest_daytime') }} €/kWh
+        </div>
+
+        <div style="display:flex; gap:12px; margin-bottom: 12px;">
+          <div style="flex:1; background-color: rgba(0,255,0,0.15); border-radius: 8px; padding: 12px;">
+            📉 Gem. goedkoopste uren:
+            {{ states('sensor.average_price_cheapest_hours_daytime') }} €/kWh
+          </div>
+          <div style="flex:1; background-color: rgba(0,255,0,0.15); border-radius: 8px; padding: 12px;">
+            📈 Gem. duurste uren:
+            {{ states('sensor.average_price_most_expensive_hours_daytime') }} €/kWh
+          </div>
+        </div>
+      {% else %}
+        <div style="color:#666; font-style: italic;">
+          EPEX-trading vandaag niet lucratief!
+        </div>
+      {% endif %}
+    card_mod:
+      style: |
+        ha-card {
+          border: 3px solid #00ff00;
+          border-radius: 20px;
+          padding: 16px;
+          box-shadow: none;
+        }
+  - type: custom:custom-gauge-card
+    entity: sensor.totaal_ac_vermogen_thuisbatterijen
+    name: Power
+    unit: W
+    min: -2500
+    max: 2500
+    bidirectional: true
+    gauge_size: 220
+    center_size: 120
+    leds_count: 150
+    smooth_transitions: true
+    animation_duration: 800
+    enable_shadow: true
+    center_shadow: true
+    center_shadow_blur: 40
+    center_shadow_spread: 20
+    severity:
+      - value: -7500
+        color: "#00ff00"
+      - value: -1
+        color: "#00ff00"
+      - value: 0
+        color: "#00ff00"
+      - value: 1
+        color: "#ff0000"
+      - value: 7500
+        color: "#ff0000"
+    custom_background: "#00ff00"
+    custom_gauge_background: "#111111"
+    custom_center_background: "#111111"
+    custom_text_color: "#ffffff"
+    center_shadow_pulse: true
+    center_shadow_pulse_intensity: 0.6
+    center_shadow_pulse_duration: 800
+    center_shadow_pulse_min: -7500
+    center_shadow_pulse_max: 7500
+  - type: custom:custom-gauge-card
+    entity: sensor.average_battery_soc
+    name: SOC
+    unit: "%"
+    min: 0
+    max: 100
+    decimals: 0
+    gauge_size: 220
+    leds_count: 100
+    smooth_transitions: true
+    animation_duration: 800
+    enable_shadow: true
+    center_shadow: true
+    center_shadow_blur: 30
+    center_shadow_spread: 10
+    severity:
+      - value: 0
+        color: "#ff0000"
+      - value: 11
+        color: "#ff0000"
+      - value: 14
+        color: "#ff3300"
+      - value: 18
+        color: "#ff6600"
+      - value: 22
+        color: "#ff9900"
+      - value: 26
+        color: "#ffcc00"
+      - value: 30
+        color: "#ccff00"
+      - value: 34
+        color: "#99ff00"
+      - value: 37
+        color: "#66ff00"
+      - value: 40
+        color: "#00ff00"
+      - value: 100
+        color: "#00ff00"
+    custom_background: "#00ff00"
+    custom_gauge_background: "#111111"
+    custom_center_background: "#111111"
+    custom_text_color: "#ffffff"
+    center_shadow_pulse: true
+    center_shadow_pulse_intensity: 0.5
+    center_shadow_pulse_duration: 1000
+    center_shadow_pulse_min: 0
+    center_shadow_pulse_max: 11
